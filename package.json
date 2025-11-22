@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "concurrently \"npm run watch\" \"live-server\""
   },
   "repository": {
     "type": "git",
@@ -18,6 +20,8 @@
   },
   "homepage": "https://github.com/huzhiwu1/mini-react#readme",
   "devDependencies": {
+    "concurrently": "^9.2.1",
+    "live-server": "^1.2.2",
     "typescript": "^5.9.3"
   }
 }
