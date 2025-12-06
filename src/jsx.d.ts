@@ -15,7 +15,3 @@ declare namespace JSX {
     [elemName: string]: any;
   }
 }
-
-declare const MiniReact: {
-  createElement: (type: any, props?: any, ...children: any[]) => any;
-};

@@ -62,10 +62,12 @@
       // 如果剩余时间不足1ms，让出控制权
       shouldYield = deadline.timeRemaining() < 1;
     }
+
+    console.log("wipRoot", wipRoot);
     // 如果没有需要处理的工作单元了,
     // 进入commit阶段，将fiber挂载到真实的dom上
     if (!nextUnitOfWork && wipRoot) {
-      commitRoot();
+      //   commitRoot();
     }
     requestIdleCallback(workloop);
   }
@@ -101,6 +103,8 @@
     if (!fiber.dom) {
       fiber.dom = createDom(fiber);
     }
+    // 处理子节点
+    reconcileChildren(fiber, fiber.props.children);
   }
 
   // 创建真实dom节点
@@ -158,6 +162,64 @@
         const eventType = name.toLocaleLowerCase().substring(2);
         dom.addEventListener(eventType, nextProps[name]);
       });
+  }
+
+  // 处理原始标签的子节点，转为fiber节点
+  function reconcileChildren(wipFiber, elements) {
+    let index = 0; // 当前处理的子节点索引
+    let oldFiber = wipFiber.alternate?.child; // 旧的子节点fiber
+    let prevSibling = null; // 上一个兄弟节点fiber
+    // 需要遍历的子节点不为空，或者旧的fiber节点不为空
+    // 注意这里的oldFiber可能为undefined或null，要用!=进行判断
+    while (index < elements.length || oldFiber != null) {
+      const element = elements[index];
+      let newFiber = null;
+      // 是否是相同类型
+      const sameType = oldFiber?.type === element?.type;
+
+      // 组件类型相同，直接复制旧的fiber属性
+      if (sameType) {
+        newFiber = {
+          type: oldFiber.type,
+          dom: oldFiber.dom,
+          props: element.props,
+          return: wipFiber, // 父级fiber
+          alternate: oldFiber, // 旧的fiber
+          // sibling: // 这里还不知兄弟节点是什么，等index往后走，才知道、
+          effectTag: "UPDATE",
+        };
+      }
+      // 组件类型不同，但是有element
+      if (element && !sameType) {
+        newFiber = {
+          type: element.type,
+          dom: null, //需要去createDom那创建
+          props: element.props,
+          return: wipFiber,
+          alternate: null, // 由于旧的节点跟当前节点类型不同，这里不能将旧节点赋值给alternate
+          effectTag: "PLACEMENT",
+        };
+      }
+
+      // 如果旧的fiber存在，而与当前的element的type不同，旧的fiber需要删除
+      if (oldFiber && !sameType) {
+        oldFiber.effectTag = "DELETION";
+        deletions.push(oldFiber);
+      }
+      // 由于需要递归对比新旧两个fiber树，这里oldFiber需要更新为同一层级的兄弟节点
+      if (oldFiber) {
+        oldFiber = oldFiber.sibling;
+      }
+      // 更新fiber的child属性，child是子节点的第一个fiber节点
+      if (index === 0) {
+        wipFiber.child = newFiber;
+      } else if (element) {
+        prevSibling.sibling = newFiber;
+      }
+
+      prevSibling = newFiber;
+      index++;
+    }
   }
 
   window.MiniReact = {
