@@ -107,6 +107,7 @@
   // 处理函数组件
   function updateFunctionComponent(fiber) {
     wipFiber = fiber;
+    // 因为是从根节点wipRoot往下寻找的，所以每次stateHookIndex都要归0
     stateHookIndex = 0;
     wipFiber.stateHooks = [];
     wipFiber.effectHooks = [];
@@ -283,8 +284,52 @@
     }
   }
 
+  // 处理useState函数
+  function useState(initialState) {
+    let currentFiber = wipFiber; // 正在工作的fiber节点
+    // 旧的stateHook是什么
+    let oldStateHook = currentFiber?.alternate?.stateHooks[stateHookIndex];
+
+    // 构建新的stateHook
+    const stateHook = {
+      // 上一次渲染中触发的 setState(()=>1) setState(()=>2)等都会以队列的方式放入queue中
+      queue: oldStateHook ? oldStateHook?.queue : [],
+      // 状态延续上一次渲染中的状态或初始化状态
+      state: oldStateHook ? oldStateHook.state : initialState,
+    };
+
+    // 处理还没有执行的stateHook queue
+    stateHook.queue.forEach((action) => {
+      stateHook.state = action(stateHook.state);
+    });
+
+    stateHook.queue = [];
+    // 增加stateHookIndex，用于下一个stateHook的索引
+    stateHookIndex++;
+    wipFiber.stateHooks.push(stateHook);
+
+    function setState(action) {
+      const isFunction = typeof action === "function";
+      stateHook.queue.push(isFunction ? action : () => action);
+      // 以整棵树的根为起点重新渲染，不能以当前函数组件为根
+      // 使用上次提交的根（currentRoot）来构建新的工作根
+      wipRoot = {
+        dom: currentRoot.dom,
+        props: currentRoot.props,
+        alternate: currentRoot,
+      };
+      // 重置删除队列，避免遗留的删除标记影响本次提交
+      deletions = [];
+      // 下一个要处理的 unit of work 是新的根
+      nextUnitOfWork = wipRoot;
+    }
+
+    return [stateHook.state, setState];
+  }
+
   window.MiniReact = {
     createElement,
     Render,
+    useState,
   };
 })();
