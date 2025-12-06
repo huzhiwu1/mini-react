@@ -82,6 +82,7 @@
     // 是否是函数组件
     const isFunctionComponent = fiber.type instanceof Function;
     if (isFunctionComponent) {
+      updateFunctionComponent(fiber);
     } else {
       updateHostComponent(fiber);
     }
@@ -98,6 +99,20 @@
       // 回溯，遍历父节点的兄弟节点
       nextFiber = nextFiber.return;
     }
+  }
+
+  // 函数组件的根fiber节点
+  let wipFiber = null;
+  let stateHookIndex = 0;
+  // 处理函数组件
+  function updateFunctionComponent(fiber) {
+    wipFiber = fiber;
+    stateHookIndex = 0;
+    wipFiber.stateHooks = [];
+    wipFiber.effectHooks = [];
+    // 调用函数组件，获取返回的虚拟dom元素
+    const children = [fiber.type(fiber.props)];
+    reconcileChildren(fiber, children);
   }
   // 处理原生标签组件
   function updateHostComponent(fiber) {
