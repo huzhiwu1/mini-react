@@ -44,6 +44,7 @@
       },
       alternate: currentRoot, // 旧的fiber节点
     };
+    deletions = []; // 要删除的fiber节点数组
     // 根fiber节点就是下一个要开始工作的fiber节点
     nextUnitOfWork = wipRoot; // 开始工作循环
   }
@@ -66,8 +67,9 @@
     console.log("wipRoot", wipRoot);
     // 如果没有需要处理的工作单元了,
     // 进入commit阶段，将fiber挂载到真实的dom上
+    // 这里的commitRoot也是循环，将所有的fiber节点挂载到真实的dom上
     if (!nextUnitOfWork && wipRoot) {
-      //   commitRoot();
+      commitRoot();
     }
     requestIdleCallback(workloop);
   }
@@ -219,6 +221,50 @@
 
       prevSibling = newFiber;
       index++;
+    }
+  }
+
+  function commitRoot() {
+    // 把要删除的fiber节点删除
+    deletions.forEach(commitWork);
+    // 从根fiber节点开始挂载
+    commitWork(wipRoot.child);
+    // 挂载完成，更新currentRoot,currentRoot就是下一次更新的旧节点
+    currentRoot = wipRoot;
+    wipRoot = null; // 需要更新的根节点为null
+    deletions = []; // 需要删除的fiber节点为空
+  }
+
+  function commitWork(fiber) {
+    // 没有fiber节点
+    if (!fiber) {
+      return;
+    }
+    // 找到根dom节点进行挂载
+    let domParentFiber = fiber.return;
+    while (!domParentFiber.dom) {
+      domParentFiber = domParentFiber.return;
+    }
+    let domParent = domParentFiber.dom;
+    // 挂载新节点
+    if (fiber.effectTag === "PLACEMENT" && fiber.dom != null) {
+      domParent.appendChild(fiber.dom);
+      // 更新节点
+    } else if (fiber.effectTag === "UPDATE" && fiber.dom != null) {
+      updateDom(fiber.dom, fiber.alternate.props, fiber.props);
+      // 删除dom节点
+    } else if (fiber.effectTag === "DELETION") {
+      commitDeletion(fiber, domParent);
+    }
+    // 深度优先搜索，递归子节点和兄弟节点
+    commitWork(fiber.child);
+    commitWork(fiber.sibling);
+  }
+  function commitDeletion(fiber, domParent) {
+    if (fiber.dom) {
+      domParent.removeChild(fiber.dom);
+    } else {
+      commitDeletion(fiber.child, domParent);
     }
   }
 
