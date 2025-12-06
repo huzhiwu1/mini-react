@@ -64,7 +64,6 @@
       shouldYield = deadline.timeRemaining() < 1;
     }
 
-    console.log("wipRoot", wipRoot);
     // 如果没有需要处理的工作单元了,
     // 进入commit阶段，将fiber挂载到真实的dom上
     // 这里的commitRoot也是循环，将所有的fiber节点挂载到真实的dom上
@@ -245,6 +244,7 @@
     deletions.forEach(commitWork);
     // 从根fiber节点开始挂载
     commitWork(wipRoot.child);
+    commitEffectHooks();
     // 挂载完成，更新currentRoot,currentRoot就是下一次更新的旧节点
     currentRoot = wipRoot;
     wipRoot = null; // 需要更新的根节点为null
@@ -327,9 +327,84 @@
     return [stateHook.state, setState];
   }
 
+  function useEffect(callback, deps) {
+    const effectHook = {
+      callback,
+      deps,
+      cleanup: undefined, // 执行完callback后才能拿到
+    };
+    // 将effectHook放入当前的函数组件的fiber节点
+    wipFiber.effectHooks.push(effectHook);
+  }
+
+  function commitEffectHooks() {
+    function runCleanup(fiber) {
+      if (!fiber) return;
+      // 遍历旧的fiber节点上的hooks
+      fiber.alternate?.effectHooks?.forEach((hook, index) => {
+        const deps = fiber.effectHooks[index].deps;
+        // 没有依赖 或 依赖变更，执行cleanup
+        if (!hook.deps || !isDepsEqual(hook.deps, deps)) {
+          hook.cleanup?.();
+        }
+      });
+      // 递归处理子节点
+      runCleanup(fiber.child);
+      // 递归处理兄弟节点
+      runCleanup(fiber.sibling);
+    }
+    function run(fiber) {
+      // fiber节点为空
+      if (!fiber) {
+        return;
+      }
+      // 函数fiber上才有effectHooks
+      fiber.effectHooks?.forEach((newHook, index) => {
+        // 如果没有旧的fiber节点，证明是初始化执行useEffect
+        if (!fiber.alternate) {
+          newHook.cleanup = newHook.callback();
+          return;
+        }
+        // 依赖为空
+        if (!newHook.deps) {
+          newHook.cleanup = newHook.callback();
+        }
+        // 有依赖，对比依赖是否变化
+        if (newHook.deps.length > 0) {
+          const oldHook = fiber.alternate?.effectHooks[index];
+
+          if (!isDepsEqual(oldHook.deps, newHook.deps)) {
+            newHook.cleanup = newHook.callback();
+          }
+        }
+      });
+
+      // 递归处理子节点
+      run(fiber.child);
+      // 兄弟节点
+      run(fiber.sibling);
+    }
+    runCleanup(wipRoot);
+    run(wipRoot);
+  }
+
+  function isDepsEqual(deps, newDeps) {
+    if (deps.length !== newDeps.length) {
+      return false;
+    }
+
+    for (let i = 0; i < deps.length; i++) {
+      if (deps[i] !== newDeps[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   window.MiniReact = {
     createElement,
     Render,
     useState,
+    useEffect,
   };
 })();
